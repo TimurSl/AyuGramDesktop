@@ -124,6 +124,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 // AyuGram includes
 #include "ayu/ayu_settings.h"
 #include "ayu/features/forward/ayu_forward.h"
+#include "ayu/features/unigif/unigif_config.h"
+#include "ayu/features/unigif/unigif_uploader.h"
 #include "ayu/ui/context_menu/context_menu.h"
 
 
@@ -408,6 +410,10 @@ void SaveGif(
 	if (const auto item = controller->session().data().message(itemId)) {
 		if (const auto media = item->media()) {
 			if (const auto document = media->document()) {
+				if (Ayu::UniGif::IsActive()) {
+					Ayu::UniGif::AddDocument(document, item->fullId());
+					return;
+				}
 				Api::ToggleSavedGif(
 					controller->uiShow(),
 					document,
@@ -464,7 +470,9 @@ void AddDocumentActions(
 			}, &st::menuIconShowInChat);
 		}
 		if (!list->hasCopyMediaRestriction(item)) {
-			menu->addAction(tr::lng_context_save_gif(tr::now), [=] {
+			menu->addAction(Ayu::UniGif::IsActive()
+				? tr::ayu_UnigifAdd(tr::now)
+				: tr::lng_context_save_gif(tr::now), [=] {
 				SaveGif(list->controller(), contextId);
 			}, &st::menuIconGif);
 		}

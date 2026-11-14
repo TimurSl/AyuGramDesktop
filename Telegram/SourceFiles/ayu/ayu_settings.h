@@ -344,6 +344,9 @@ public:
 	[[nodiscard]] bool filterZalgo() const { return _filterZalgo.current(); }
 	[[nodiscard]] bool stickerConfirmation() const { return _stickerConfirmation.current(); }
 	[[nodiscard]] bool gifConfirmation() const { return _gifConfirmation.current(); }
+	[[nodiscard]] bool unigifEnabled() const { return _unigifEnabled.current(); }
+	[[nodiscard]] const QString &unigifUrl() const { return _unigifUrl.current(); }
+	[[nodiscard]] const QString &unigifKey() const { return _unigifKey.current(); }
 	[[nodiscard]] bool voiceConfirmation() const { return _voiceConfirmation.current(); }
 	[[nodiscard]] bool roundConfirmation() const { return _roundConfirmation.current(); }
 	[[nodiscard]] TranslationProvider translationProvider() const { return _translationProvider.current(); }
@@ -431,6 +434,9 @@ public:
 	void setFilterZalgo(bool val);
 	void setStickerConfirmation(bool val);
 	void setGifConfirmation(bool val);
+	void setUnigifEnabled(bool val);
+	void setUnigifUrl(const QString &val);
+	void setUnigifKey(const QString &val);
 	void setVoiceConfirmation(bool val);
 	void setRoundConfirmation(bool val);
 	void setTranslationProvider(TranslationProvider val);
@@ -597,6 +603,12 @@ public:
 	[[nodiscard]] rpl::producer<bool> stickerConfirmationChanges() const { return _stickerConfirmation.changes(); }
 	[[nodiscard]] rpl::producer<bool> gifConfirmationValue() const { return _gifConfirmation.value(); }
 	[[nodiscard]] rpl::producer<bool> gifConfirmationChanges() const { return _gifConfirmation.changes(); }
+	[[nodiscard]] rpl::producer<bool> unigifEnabledValue() const { return _unigifEnabled.value(); }
+	[[nodiscard]] rpl::producer<bool> unigifEnabledChanges() const { return _unigifEnabled.changes(); }
+	[[nodiscard]] rpl::producer<QString> unigifUrlValue() const { return _unigifUrl.value(); }
+	[[nodiscard]] rpl::producer<QString> unigifUrlChanges() const { return _unigifUrl.changes(); }
+	[[nodiscard]] rpl::producer<QString> unigifKeyValue() const { return _unigifKey.value(); }
+	[[nodiscard]] rpl::producer<QString> unigifKeyChanges() const { return _unigifKey.changes(); }
 	[[nodiscard]] rpl::producer<bool> voiceConfirmationValue() const { return _voiceConfirmation.value(); }
 	[[nodiscard]] rpl::producer<bool> voiceConfirmationChanges() const { return _voiceConfirmation.changes(); }
 	[[nodiscard]] rpl::producer<bool> roundConfirmationValue() const { return _roundConfirmation.value(); }
@@ -702,6 +714,9 @@ private:
 	rpl::variable<bool> _filterZalgo = false;
 	rpl::variable<bool> _stickerConfirmation = false;
 	rpl::variable<bool> _gifConfirmation = false;
+	rpl::variable<bool> _unigifEnabled = false;
+	rpl::variable<QString> _unigifUrl;
+	rpl::variable<QString> _unigifKey;
 	rpl::variable<bool> _voiceConfirmation = false;
 	rpl::variable<bool> _roundConfirmation = false;
 	rpl::variable<TranslationProvider> _translationProvider = TranslationProvider::Telegram;

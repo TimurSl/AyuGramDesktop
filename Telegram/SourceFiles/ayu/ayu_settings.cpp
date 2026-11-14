@@ -1005,6 +1005,24 @@ void AyuSettings::setGifConfirmation(bool val) {
 	save();
 }
 
+void AyuSettings::setUnigifEnabled(bool val) {
+	if (_unigifEnabled.current() == val) return;
+	_unigifEnabled = val;
+	save();
+}
+
+void AyuSettings::setUnigifUrl(const QString &val) {
+	if (_unigifUrl.current() == val) return;
+	_unigifUrl = val;
+	save();
+}
+
+void AyuSettings::setUnigifKey(const QString &val) {
+	if (_unigifKey.current() == val) return;
+	_unigifKey = val;
+	save();
+}
+
 void AyuSettings::setVoiceConfirmation(bool val) {
 	if (_voiceConfirmation.current() == val) return;
 	_voiceConfirmation = val;
@@ -1156,6 +1174,9 @@ void to_json(nlohmann::json &j, const AyuSettings &s) {
 		{"filterZalgo", s._filterZalgo.current()},
 		{"stickerConfirmation", s._stickerConfirmation.current()},
 		{"gifConfirmation", s._gifConfirmation.current()},
+		{"unigifEnabled", s._unigifEnabled.current()},
+		{"unigifUrl", s._unigifUrl.current()},
+		{"unigifKey", s._unigifKey.current()},
 		{"voiceConfirmation", s._voiceConfirmation.current()},
 		{"roundConfirmation", s._roundConfirmation.current()},
 		{"translationProvider", s._translationProvider.current()},
@@ -1260,6 +1281,9 @@ void from_json(const nlohmann::json &j, AyuSettings &s) {
 	s._filterZalgo = j.value("filterZalgo", defaults._filterZalgo.current());
 	s._stickerConfirmation = j.value("stickerConfirmation", defaults._stickerConfirmation.current());
 	s._gifConfirmation = j.value("gifConfirmation", defaults._gifConfirmation.current());
+	s._unigifEnabled = j.value("unigifEnabled", defaults._unigifEnabled.current());
+	s._unigifUrl = j.value("unigifUrl", defaults._unigifUrl.current());
+	s._unigifKey = j.value("unigifKey", defaults._unigifKey.current());
 	s._voiceConfirmation = j.value("voiceConfirmation", defaults._voiceConfirmation.current());
 	s._roundConfirmation = j.value("roundConfirmation", defaults._roundConfirmation.current());
 	s._translationProvider = j.value("translationProvider", defaults._translationProvider.current());

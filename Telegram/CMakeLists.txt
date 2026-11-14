@@ -120,6 +120,23 @@ set(ayugram_files
         ayu/ayu_lang.h
         ayu/ayu_infra.cpp
         ayu/ayu_infra.h
+        ayu/features/unigif/unigif_client.cpp
+        ayu/features/unigif/unigif_client.h
+        ayu/features/unigif/unigif_config.cpp
+        ayu/features/unigif/unigif_config.h
+        ayu/features/unigif/unigif_errors.cpp
+        ayu/features/unigif/unigif_errors.h
+        ayu/features/unigif/unigif_query.cpp
+        ayu/features/unigif/unigif_query.h
+        ayu/features/unigif/unigif_results.cpp
+        ayu/features/unigif/unigif_results.h
+        ayu/features/unigif/unigif_sender.cpp
+        ayu/features/unigif/unigif_sender.h
+        ayu/features/unigif/unigif_uploader.cpp
+        ayu/features/unigif/unigif_uploader.h
+        ayu/features/unigif/unigif_models.h
+        ayu/ui/settings/settings_unigif.cpp
+        ayu/ui/settings/settings_unigif.h
         ayu/utils/ayu_mapper.cpp
         ayu/utils/ayu_mapper.h
         ayu/utils/qt_key_modifiers_extended.h

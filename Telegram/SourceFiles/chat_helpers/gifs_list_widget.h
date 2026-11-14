@@ -12,7 +12,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "inline_bots/inline_bot_layout_item.h"
 #include "layout/layout_mosaic.h"
 
+#include <QtCore/QPointer>
 #include <QtCore/QTimer>
+
+class QNetworkReply;
+
+namespace Ayu::UniGif {
+struct GifPage;
+struct Error;
+} // namespace Ayu::UniGif
 
 namespace style {
 struct ComposeIcons;
@@ -141,6 +149,15 @@ private:
 	};
 
 	void setupSearch();
+	void checkUnigifMode();
+	void searchUnigif(const QString &query);
+	void sendUnigifRequest();
+	void cancelUnigifRequest();
+	void unigifResultsDone(
+		const QString &key,
+		Ayu::UniGif::GifPage &&page,
+		Ayu::UniGif::Error &&error);
+	void deleteUnigif(const QString &id);
 	void clearHeavyData();
 	void cancelGifsSearch();
 	void switchToSavedGifs();
@@ -213,6 +230,12 @@ private:
 
 	std::map<QString, std::unique_ptr<InlineCacheEntry>> _inlineCache;
 	QTimer _inlineRequestTimer;
+
+	bool _unigif = false;
+	bool _unigifBusy = false;
+	QPointer<QNetworkReply> _unigifReply;
+	QString _unigifError;
+	crl::time _unigifLibraryLoadedAt = 0;
 
 	UserData *_searchBot = nullptr;
 	mtpRequestId _searchBotRequestId = 0;
