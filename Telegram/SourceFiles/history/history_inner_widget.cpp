@@ -139,6 +139,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 // AyuGram includes
 #include "ayu/ayu_settings.h"
 #include "ayu/features/filters/filters_cache_controller.h"
+#include "ayu/features/unigif/unigif_config.h"
+#include "ayu/features/unigif/unigif_uploader.h"
 #include "ayu/ui/context_menu/context_menu.h"
 #include "ayu/ui/settings/filters/edit_filter.h"
 #include "ayu/utils/telegram_helpers.h"
@@ -3194,7 +3196,9 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 				}, &st::menuIconShowInChat);
 			}
 			if (!hasCopyMediaRestriction(item)) {
-				_menu->addAction(tr::lng_context_save_gif(tr::now), [=] {
+				_menu->addAction(Ayu::UniGif::IsActive()
+					? tr::ayu_UnigifAdd(tr::now)
+					: tr::lng_context_save_gif(tr::now), [=] {
 					saveContextGif(itemId);
 				}, &st::menuIconGif);
 			}
@@ -4165,6 +4169,10 @@ void HistoryInner::saveContextGif(FullMsgId itemId) {
 		if (!hasCopyMediaRestriction(item)) {
 			if (const auto media = item->media()) {
 				if (const auto document = media->document()) {
+					if (Ayu::UniGif::IsActive()) {
+						Ayu::UniGif::AddDocument(document, item->fullId());
+						return;
+					}
 					Api::ToggleSavedGif(
 						_controller->uiShow(),
 						document,

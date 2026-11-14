@@ -33,6 +33,9 @@ rpl::producer<> RecentInlineBots::updates() const {
 }
 
 void RecentInlineBots::bump(not_null<UserData*> user) {
+	if (!user->isBot()) {
+		return;
+	}
 	_session->local().readRecentHashtagsAndBots();
 
 	if (!_list.empty() && _list.front() == user) {

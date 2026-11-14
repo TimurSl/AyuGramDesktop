@@ -44,10 +44,17 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_chat_helpers.h"
 #include "styles/style_menu_icons.h"
 
+#include <QtNetwork/QNetworkReply>
 #include <QtWidgets/QApplication>
 
 // AyuGram includes
 #include "ayu/ayu_settings.h"
+#include "ayu/features/unigif/unigif_client.h"
+#include "ayu/features/unigif/unigif_config.h"
+#include "ayu/features/unigif/unigif_errors.h"
+#include "ayu/features/unigif/unigif_query.h"
+#include "ayu/features/unigif/unigif_results.h"
+#include "ayu/features/unigif/unigif_uploader.h"
 #include "ui/boxes/confirm_box.h"
 #include "boxes/abstract_box.h"
 
@@ -58,6 +65,11 @@ namespace {
 constexpr auto kSearchRequestDelay = 400;
 constexpr auto kMinRepaintDelay = crl::time(33);
 constexpr auto kMinAfterScrollDelay = crl::time(33);
+constexpr auto kUnigifReloadDelay = 60 * crl::time(1000);
+
+[[nodiscard]] QString UnigifLibraryKey() {
+	return u"\x01library"_q;
+}
 
 } // namespace
 
@@ -72,6 +84,17 @@ void AddGifAction(
 	auto &data = document->owner();
 	const auto index = data.stickers().savedGifs().indexOf(document);
 	const auto saved = (index >= 0);
+	if (!saved && Ayu::UniGif::IsActive()) {
+		const auto &unigifIcons = iconsOverride
+			? *iconsOverride
+			: st::defaultComposeIcons;
+		callback(tr::ayu_UnigifAdd(tr::now), [=] {
+			Ayu::UniGif::AddDocument(
+				document,
+				document->stickerOrGifOrigin());
+		}, &unigifIcons.menuGifAdd);
+		return;
+	}
 	const auto text = (saved
 		? tr::lng_context_delete_gif
 		: tr::lng_context_save_gif)(tr::now);
@@ -122,6 +145,7 @@ GifsListWidget::GifsListWidget(
 	setMouseTracking(true);
 	setAttribute(Qt::WA_OpaquePaintEvent);
 
+	_unigif = Ayu::UniGif::IsActive();
 	setupSearch();
 
 	_inlineRequestTimer.setSingleShot(true);
@@ -226,6 +250,9 @@ std::vector<StickerIcon> GifsListWidget::fillIcons() {
 	auto result = std::vector<StickerIcon>();
 	result.reserve(_sections.size() + 1);
 	result.emplace_back(Data::Stickers::RecentSetId);
+	if (_unigif) {
+		return result;
+	}
 	const auto side = StickersListFooter::IconFrameSize();
 	for (const auto &section : _sections) {
 		const auto s = section.document;
@@ -356,9 +383,21 @@ void GifsListWidget::paintEvent(QPaintEvent *e) {
 
 void GifsListWidget::paintInlineItems(Painter &p, QRect clip) {
 	if (_mosaic.empty()) {
+		if (_unigif
+			&& (_unigifBusy
+				|| _inlineQuery.isEmpty()
+				|| _inlineRequestTimer.isActive())) {
+			return;
+		}
 		p.setFont(st::normalFont);
 		p.setPen(st::noContactsColor);
-		auto text = _inlineQuery.isEmpty()
+		auto text = _unigif
+			? (!_unigifError.isEmpty()
+				? _unigifError
+				: (_inlineQuery == UnigifLibraryKey())
+				? tr::ayu_UnigifEmpty(tr::now)
+				: tr::ayu_UnigifNothingFound(tr::now))
+			: _inlineQuery.isEmpty()
 			? tr::lng_gifs_no_saved(tr::now)
 			: tr::lng_inline_bot_no_results(tr::now);
 		p.drawText(QRect(0, 0, width(), (height() / 3) * 2 + st::normalFont->height), text, style::al_center);
@@ -433,10 +472,19 @@ base::unique_qptr<Ui::PopupMenu> GifsListWidget::fillContextMenu(
 	}
 
 	if (const auto item = _mosaic.maybeItemAt(_selected)) {
+		const auto unigifResult = _unigif ? item->getResult() : nullptr;
 		const auto document = item->getDocument()
 			? item->getDocument() // Saved GIF.
 			: item->getPreviewDocument(); // Searched GIF.
-		if (document) {
+		if (Ayu::UniGif::IsResult(unigifResult.get())) {
+			if (Ayu::UniGif::HasScope(u"delete"_q)) {
+				const auto id = Ayu::UniGif::GifId(unigifResult.get());
+				menu->addAction(
+					tr::ayu_UnigifDelete(tr::now),
+					crl::guard(this, [=] { deleteUnigif(id); }),
+					&icons->menuGifRemove);
+			}
+		} else if (document) {
 			auto callback = [&](
 					const QString &text,
 					Fn<void()> &&done,
@@ -560,13 +608,19 @@ void GifsListWidget::selectInlineResult(
 			}
 		}
 	} else if (const auto inlineResult = item->getResult()) {
-		if (inlineResult->onChoose(item)) {
+		const auto unigif = Ayu::UniGif::IsResult(inlineResult.get());
+		if (unigif || inlineResult->onChoose(item)) {
 			options.hideViaBot = true;
+			const auto bot = unigif
+				? static_cast<UserData*>(session().user())
+				: _searchBot;
 			_inlineResultChosen.fire({
 				.result = inlineResult,
-				.bot = _searchBot,
+				.bot = bot,
 				.options = options,
-				.messageSendingFrom = messageSendingFrom(),
+				.messageSendingFrom = unigif
+					? Ui::MessageSendingAnimationFrom()
+					: messageSendingFrom(),
 			});
 		}
 	}
@@ -641,7 +695,7 @@ void GifsListWidget::refreshSavedGifs() {
 		clearInlineRows(false);
 
 		const auto &saved = session().data().stickers().savedGifs();
-		if (!saved.isEmpty()) {
+		if (!_unigif && !saved.isEmpty()) {
 			const auto layouts = ranges::views::all(
 				saved
 			) | ranges::views::transform([&](not_null<DocumentData*> gif) {
@@ -852,6 +906,7 @@ Data::FileOrigin GifsListWidget::inlineItemFileOrigin() {
 }
 
 void GifsListWidget::afterShown() {
+	checkUnigifMode();
 	if (_search) {
 		_search->stealFocus();
 	}
@@ -901,6 +956,10 @@ int32 GifsListWidget::showInlineRows(bool newResults) {
 }
 
 void GifsListWidget::searchForGifs(const QString &query) {
+	if (_unigif) {
+		searchUnigif(query);
+		return;
+	}
 	if (query.isEmpty()) {
 		cancelGifsSearch();
 		return;
@@ -950,6 +1009,10 @@ rpl::producer<> GifsListWidget::cancelRequests() const {
 }
 
 void GifsListWidget::sendInlineRequest() {
+	if (_unigif) {
+		sendUnigifRequest();
+		return;
+	}
 	if (_inlineRequestId || !_inlineQueryPeer || _inlineNextQuery.isEmpty()) {
 		return;
 	}
@@ -988,6 +1051,174 @@ void GifsListWidget::sendInlineRequest() {
 		_search->setLoading(false);
 		_inlineRequestId = 0;
 	}).handleAllErrors().send();
+}
+
+void GifsListWidget::checkUnigifMode() {
+	const auto active = Ayu::UniGif::IsActive();
+	if (active != _unigif) {
+		_unigif = active;
+		cancelUnigifRequest();
+		_inlineRequestTimer.stop();
+		if (_inlineRequestId) {
+			_api.request(base::take(_inlineRequestId)).cancel();
+		}
+		_search->setLoading(false);
+		_inlineQuery = _inlineNextQuery = _inlineNextOffset = QString();
+		_inlineCache.clear();
+		_unigifError = QString();
+		_search->cancel();
+		_chosenSetId = Data::Stickers::RecentSetId;
+		refreshIcons();
+		refreshInlineRows(nullptr, true);
+	}
+	if (!_unigif) {
+		return;
+	}
+	Ayu::UniGif::EnsureScopes();
+	const auto key = _inlineNextQuery.isEmpty()
+		? UnigifLibraryKey()
+		: _inlineNextQuery;
+	const auto stale = (key == UnigifLibraryKey())
+		&& (_inlineQuery == key)
+		&& ((crl::now() - _unigifLibraryLoadedAt) > kUnigifReloadDelay);
+	if (_inlineQuery.isEmpty() || !_unigifError.isEmpty() || stale) {
+		_inlineCache.erase(key);
+		_inlineQuery = QString();
+		searchUnigif((key == UnigifLibraryKey()) ? QString() : key);
+	}
+}
+
+void GifsListWidget::searchUnigif(const QString &query) {
+	const auto normalized = Ayu::UniGif::NormalizeQuery(query);
+	const auto key = normalized.isEmpty() ? UnigifLibraryKey() : normalized;
+	if (_inlineQuery == key) {
+		return;
+	}
+	cancelUnigifRequest();
+	_search->setLoading(false);
+	_unigifError = QString();
+	if (_inlineCache.find(key) != _inlineCache.cend()) {
+		_inlineRequestTimer.stop();
+		_inlineQuery = _inlineNextQuery = key;
+		showInlineRows(true);
+	} else {
+		_inlineNextQuery = key;
+		_inlineRequestTimer.start(normalized.isEmpty() ? 0 : kSearchRequestDelay);
+	}
+}
+
+void GifsListWidget::sendUnigifRequest() {
+	if (_unigifBusy || _inlineNextQuery.isEmpty()) {
+		return;
+	}
+	_inlineRequestTimer.stop();
+	_inlineQuery = _inlineNextQuery;
+
+	auto cursor = QString();
+	const auto it = _inlineCache.find(_inlineQuery);
+	if (it != _inlineCache.cend()) {
+		cursor = it->second->nextOffset;
+		if (cursor.isEmpty()) {
+			_search->setLoading(false);
+			return;
+		}
+	}
+
+	_unigifBusy = true;
+	_search->setLoading(true);
+	const auto key = _inlineQuery;
+	const auto library = (key == UnigifLibraryKey());
+	_unigifReply = Ayu::UniGif::ListGifs(
+		library ? QString() : key,
+		library ? u"used"_q : QString(),
+		cursor,
+		crl::guard(this, [=](
+				Ayu::UniGif::GifPage page,
+				Ayu::UniGif::Error error) {
+			unigifResultsDone(key, std::move(page), std::move(error));
+		}));
+}
+
+void GifsListWidget::cancelUnigifRequest() {
+	if (const auto reply = _unigifReply.data()) {
+		reply->abort();
+	}
+	_unigifReply = nullptr;
+	_unigifBusy = false;
+}
+
+void GifsListWidget::unigifResultsDone(
+		const QString &key,
+		Ayu::UniGif::GifPage &&page,
+		Ayu::UniGif::Error &&error) {
+	_unigifBusy = false;
+	_unigifReply = nullptr;
+	_search->setLoading(false);
+	if (key != _inlineQuery) {
+		return;
+	}
+	auto it = _inlineCache.find(key);
+	if (error) {
+		if (it != _inlineCache.end()) {
+			it->second->nextOffset = QString();
+			Ayu::UniGif::ShowToast(Ayu::UniGif::ErrorMessage(error));
+		} else {
+			_unigifError = Ayu::UniGif::ErrorMessage(error);
+			refreshInlineRows(nullptr, true);
+		}
+		return;
+	}
+
+	const auto adding = (it != _inlineCache.end());
+	if (!adding) {
+		it = _inlineCache.emplace(
+			key,
+			std::make_unique<InlineCacheEntry>()).first;
+		if (key == UnigifLibraryKey()) {
+			_unigifLibraryLoadedAt = crl::now();
+		}
+	}
+	const auto entry = it->second.get();
+	entry->nextOffset = page.nextCursor;
+	entry->results.reserve(entry->results.size() + page.gifs.size());
+	auto added = 0;
+	for (const auto &gif : page.gifs) {
+		if (auto result = Ayu::UniGif::MakeResult(&session(), gif)) {
+			++added;
+			entry->results.push_back(std::move(result));
+		}
+	}
+	if (!added) {
+		entry->nextOffset = QString();
+	}
+	_unigifError = QString();
+	if (!showInlineRows(!adding)) {
+		entry->nextOffset = QString();
+	}
+	checkLoadMore();
+}
+
+void GifsListWidget::deleteUnigif(const QString &id) {
+	Ayu::UniGif::Delete(id, crl::guard(this, [=](Ayu::UniGif::Error error) {
+		if (error && error.status != 404) {
+			if (error.status == 401 || error.status == 403) {
+				Ayu::UniGif::ForgetScopes();
+			}
+			Ayu::UniGif::ShowToast(Ayu::UniGif::ErrorMessage(error));
+			return;
+		}
+		for (const auto &cached : _inlineCache) {
+			std::erase_if(cached.second->results, [&](
+					const std::shared_ptr<InlineResult> &result) {
+				return Ayu::UniGif::IsResult(result.get())
+					&& (Ayu::UniGif::GifId(result.get()) == id);
+			});
+		}
+		if (_section == Section::Inlines) {
+			showInlineRows(false);
+		}
+		Ayu::UniGif::ShowToast(tr::ayu_UnigifDeleted(tr::now));
+	}));
 }
 
 void GifsListWidget::refreshRecent() {

@@ -13,6 +13,7 @@
 #include "ayu/ui/settings/ayu_builder.h"
 #include "ayu/ui/settings/settings_ayu_utils.h"
 #include "ayu/ui/settings/settings_main.h"
+#include "ayu/ui/settings/settings_unigif.h"
 #include "settings/settings_builder.h"
 #include "settings/settings_common.h"
 #include "styles/style_ayu_icons.h"
@@ -456,6 +457,7 @@ const auto kMeta = BuildHelper({
 
 	builder.addSkip();
 	BuildStickersAndEmoji(builder, ayu);
+	BuildUniGif(builder, ayu);
 	BuildGroupsAndChannels(builder, ayu);
 	BuildMarks(builder, ayu, previewState);
 	BuildWideMessagesMultiplier(builder, ayu, previewState);

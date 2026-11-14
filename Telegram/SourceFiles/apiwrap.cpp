@@ -113,6 +113,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ayu/ayu_worker.h"
 #include "ayu/utils/telegram_helpers.h"
 #include "ayu/features/forward/ayu_forward.h"
+#include "ayu/features/unigif/unigif_results.h"
+#include "ayu/features/unigif/unigif_sender.h"
 
 
 namespace {
@@ -5138,6 +5140,10 @@ void ApiWrap::sendInlineResult(
 		SendAction action,
 		std::optional<MsgId> localMessageId,
 		Fn<void(bool)> done) {
+	if (Ayu::UniGif::IsResult(data)) {
+		Ayu::UniGif::Send(_session, data, std::move(action), std::move(done));
+		return;
+	}
 	StripEphemeralReply(_session, action.replyTo);
 	sendAction(action);
 
